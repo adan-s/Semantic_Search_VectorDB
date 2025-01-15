@@ -1,4 +1,5 @@
-from langchain_openai import OpenAIEmbeddings
+from langchain.agents import initialize_agent, Tool
+from langchain_openai import OpenAIEmbeddings,ChatOpenAI
 from langchain_chroma import Chroma
 import getpass
 import os
@@ -106,25 +107,22 @@ valid_topics = [
 # Initialize vector store and add documents
 vector_store.add_documents(documents=documents, ids=[str(uuid4()) for _ in range(len(documents))])
 
+# Define the search tool
+def search_tool_function(query):
+    query_lower = query.lower()
 
-# Function to handle user queries
-def handle_user_query(query):
-    query_lower = query.lower()  # Convert user input to lowercase
-
-    # Check if the query is about a valid topic
-    valid_topics_lower = [topic.lower() for topic in
-                          valid_topics]  # Convert valid topics to lowercase for consistent comparison
+    # Validate topics
+    valid_topics_lower = [topic.lower() for topic in valid_topics]
     if not any(topic in query_lower for topic in valid_topics_lower):
-        print("\nSorry, we don't have information on that topic right now. Please ask about one of these topics:")
-        print(", ".join(valid_topics))
-        return
+        return f"We don't have information on that topic right now. Valid topics include: {', '.join(valid_topics)}"
 
-    # Proceed with vector search if the query is valid
+    # Perform similarity search
     results = vector_store.similarity_search(query, k=3)
-    filtered_results = [res for res in results if
-                        any(topic in res.page_content.lower() for topic in valid_topics_lower)]
+    filtered_results = [
+        res for res in results if any(topic in res.page_content.lower() for topic in valid_topics_lower)
+    ]
 
-    # Remove duplicate articles based on content or metadata
+    # Remove duplicates
     seen = set()
     unique_results = []
     for res in filtered_results:
@@ -133,25 +131,43 @@ def handle_user_query(query):
             unique_results.append(res)
 
     if not unique_results:
-        print("\nSorry, no matching articles were found. Try asking about a different topic.")
+        return "No matching articles found. Try a different topic."
     else:
-        print("\nHere are some relevant articles for your query:")
+        response = "Here are some relevant articles for your query:\n"
         for res in unique_results:
-            print(f"\n* {res.page_content}")
-            print(f"  Source: {res.metadata.get('source', 'Unknown Source')}")
-            print(f"  (For more details, refer to the full article.)")
+            response += f"\n* {res.page_content}\n  Source: {res.metadata.get('source', 'Unknown Source')}\n"
+        return response
 
+# Convert the search function into a tool
+search_tool = Tool(
+    name="Semantic Search",
+    func=search_tool_function,
+    description="Use this tool to search for articles related to specific topics or queries."
+)
 
-# Repeatedly ask for user queries until they want to quit
-def start_search():
+# Initialize the ChatGPT model for the agent
+llm = ChatOpenAI(temperature=0, model="gpt-4")
+
+# Create the agent with the tool
+agent = initialize_agent(
+    tools=[search_tool],
+    llm=llm,
+    agent="zero-shot-react-description",
+)
+
+# Start the agent-based interactiona
+def start_agent():
+    print("\nWelcome to the Search Agent!")
     while True:
-        query = input("\nPlease enter your question or topic (e.g., 'Tell me about AI'), or type 'quit' to exit: ")
-        if query.lower() == 'quit':
-            print("\nThank you for using the search service. Goodbye!")
+        user_query = input("\nEnter the content to Search or type 'quit' to exit: ")
+        if user_query.lower() == "quit":
+            print("\nThank you for using the search agent. Goodbye!")
             break
         else:
-            handle_user_query(query)
-
+            # Pass the query to the agent
+            response = agent.invoke(user_query)
+            print(f"\n{response['output']}")
 
 # Start the search process
-start_search()
+if __name__ == "__main__":
+    start_agent()
