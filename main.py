@@ -10,9 +10,6 @@ from langchain_core.documents import Document
 # Load environment variables
 load_dotenv()
 
-if not os.environ.get("OPENAI_API_KEY"):
-    os.environ["OPENAI_API_KEY"] = getpass.getpass("Please enter your OpenAI API key: ")
-
 # Use the correct embedding model
 embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
 
