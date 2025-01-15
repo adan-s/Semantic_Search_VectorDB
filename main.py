@@ -157,7 +157,7 @@ agent = initialize_agent(
 
 # Start the agent-based interactiona
 def start_agent():
-    print("\nWelcome to the Search Agent!")
+    print("Welcome to the Semantic Search Application!")
     while True:
         user_query = input("\nEnter the content to Search or type 'quit' to exit: ")
         if user_query.lower() == "quit":
