@@ -1,11 +1,11 @@
 from langchain.agents import initialize_agent, Tool
 from langchain_openai import OpenAIEmbeddings,ChatOpenAI
 from langchain_chroma import Chroma
-import getpass
-import os
 from dotenv import load_dotenv
 from uuid import uuid4
 from langchain_core.documents import Document
+
+from database.db import get_all_sessions, retrieve_memory, store_memory, initialize_database
 
 # Load environment variables
 load_dotenv()
@@ -142,6 +142,7 @@ search_tool = Tool(
     description="Use this tool to search for articles related to specific topics or queries."
 )
 
+
 # Initialize the ChatGPT model for the agent
 llm = ChatOpenAI(temperature=0, model="gpt-4")
 
@@ -149,22 +150,62 @@ llm = ChatOpenAI(temperature=0, model="gpt-4")
 agent = initialize_agent(
     tools=[search_tool],
     llm=llm,
-    agent="zero-shot-react-description",
 )
 
-# Start the agent-based interactiona
+# Agent interaction loop with session management
 def start_agent():
+    initialize_database()  # Ensure tables are created
     print("Welcome to the Semantic Search Application!")
+
+    # Get available sessions
+    available_sessions = get_all_sessions()
+
+    # Ask the user whether to continue or start a new session
+    if available_sessions:
+        print("\nAvailable sessions:")
+        for i, session in enumerate(available_sessions, start=1):
+            print(f"{i}. {session}")
+
+        choice = input("\nDo you want to continue a previous session or start a new one? (Type 'new' or the session number): ")
+
+        if choice.lower() == "new":
+            session_id = f"session_{len(available_sessions) + 1}"  # Generate a new session ID
+            print("\nStarting a new session...")
+        else:
+            try:
+                session_id = available_sessions[int(choice) - 1]
+                print(f"\nContinuing session: {session_id}")
+
+                # Retrieve memory for the current session
+                past_memory = retrieve_memory(session_id)
+                if past_memory:
+                    print("\nPrevious Interactions:")
+                    for item in past_memory:
+                        print(f"User: {item['query']}")
+                        print(f"Agent: {item['response']}")
+
+            except (IndexError, ValueError):
+                print("\nInvalid choice. Starting a new session.")
+                session_id = f"session_{len(available_sessions) + 1}"
+    else:
+        session_id = "session_1"  # Default for the first session
+        print("\nNo previous sessions found. Starting a new session...")
+
     while True:
         user_query = input("\nEnter the content to Search or type 'quit' to exit: ")
         if user_query.lower() == "quit":
             print("\nThank you for using the search agent. Goodbye!")
             break
         else:
-            # Pass the query to the agent
+            # Get agent response
             response = agent.invoke(user_query)
+
+            # Store memory for the current session
+            store_memory(session_id, user_query, response["output"])
+
+            # Print agent response
             print(f"\n{response['output']}")
 
-# Start the search process
+# Run the agent
 if __name__ == "__main__":
     start_agent()
